@@ -10,29 +10,36 @@ Production-ready Valkey deployment with TLS/SSL encryption. Supports standalone 
 - Self-signed certificates or Let's Encrypt support
 - Docker Compose deployment
 - Standalone and 6-node cluster modes
+- Multi-server distributed cluster support
 - Automatic certificate renewal
 - Production-ready configuration
 
 ## Quick Start (One Command)
 
 ```bash
-git clone https://github.com/hsingh/valkey-ssl.git
+git clone https://github.com/siinghd/valkey-ssl.git
 cd valkey-ssl
 ./setup.sh
 ```
 
-That's it! The setup script will:
-- Generate a secure random password
-- Create SSL certificates
-- Configure and start Valkey
-- Display connection URL
+The interactive setup will guide you through:
+- Selecting deployment mode (standalone, cluster, multi-server)
+- Choosing IP or domain name
+- Generating secure password and certificates
+- Starting Valkey
 
-### Options
+### CLI Options
 
 ```bash
-./setup.sh --standalone     # Single instance (default)
-./setup.sh --cluster        # 6-node cluster
-./setup.sh --password PASS  # Use specific password
+./setup.sh --standalone                    # Single instance
+./setup.sh --standalone --domain redis.example.com  # With domain
+./setup.sh --cluster                       # 6-node cluster (single server)
+./setup.sh --cluster --password SECRET     # With specific password
+
+# Multi-server cluster
+./setup.sh --multiserver-init --address 10.0.0.1
+./setup.sh --multiserver-init --address redis1.example.com
+./setup.sh --multiserver-join --node-id 2 --address redis2.example.com
 ```
 
 ### Teardown
@@ -44,79 +51,95 @@ That's it! The setup script will:
 
 ---
 
-## Manual Setup
+## Multi-Server Cluster (Production HA)
 
-If you prefer manual control:
+Deploy across 6 servers for true high availability (3 masters + 3 replicas).
 
-### 1. Generate Certificates
+### Using setup.sh (Recommended)
 
-**Option A: Self-signed (for testing/internal use)**
+**Server 1 (Node 1):**
 ```bash
-cd scripts
-./generate-certs.sh ../certs your-domain.com 365
+./setup.sh --multiserver-init --password mysecret --address 10.0.0.1
+# Or with domain:
+./setup.sh --multiserver-init --password mysecret --address redis1.example.com
 ```
 
-**Option B: Let's Encrypt (for production)**
+This creates `cluster-bundle.tar.gz` containing certs and password.
+
+**Copy bundle to other servers:**
 ```bash
-# Point DNS to your server first (A record, no proxy)
-sudo certbot certonly --webroot -w /var/www/html -d your-domain.com
-
-# Copy certs
-sudo cp /etc/letsencrypt/live/your-domain.com/fullchain.pem certs/valkey.crt
-sudo cp /etc/letsencrypt/live/your-domain.com/privkey.pem certs/valkey.key
-chmod 644 certs/valkey.*
+scp cluster-bundle.tar.gz user@server2:/path/to/valkey-ssl/
+scp cluster-bundle.tar.gz user@server3:/path/to/valkey-ssl/
+# ... repeat for all servers
 ```
 
-### 3. Start Valkey
-
+**Servers 2-6:**
 ```bash
-docker compose up -d
+./setup.sh --multiserver-join --node-id 2 --address 10.0.0.2
+./setup.sh --multiserver-join --node-id 3 --address 10.0.0.3
+# ... etc
 ```
 
-### 4. Test Connection
-
-```bash
-# Using docker
-docker exec valkey-ssl valkey-cli --tls --insecure -a your-password PING
-
-# Using redis-cli (Let's Encrypt)
-redis-cli --tls -h your-domain.com -a your-password PING
-
-# Using redis-cli (self-signed)
-redis-cli --tls --cacert certs/ca.crt -h your-domain.com -a your-password PING
-```
-
-## Connection URL
-
-```
-rediss://:your-password@your-domain.com:6379
-```
-
-## Cluster Mode
-
-For high availability with automatic sharding (3 masters + 3 replicas):
-
-### Setup Cluster
-
+**Initialize cluster (after ALL nodes running):**
 ```bash
 cd cluster
-
-# Generate self-signed certs for cluster
-cd ../scripts
-./generate-certs.sh ../cluster/certs cluster.local 365
-cd ../cluster
-
-# Generate node configs
-ANNOUNCE_IP=your-server-ip VALKEY_PASSWORD=your-password ./generate-cluster-config.sh
-
-# Start cluster
-docker compose up -d
-
-# Initialize cluster
-ANNOUNCE_IP=your-server-ip VALKEY_PASSWORD=your-password ./init-cluster.sh
+./init-multiserver-cluster.sh 'mysecret' \
+  10.0.0.1:6379 10.0.0.2:6379 10.0.0.3:6379 \
+  10.0.0.4:6379 10.0.0.5:6379 10.0.0.6:6379
 ```
 
-### Cluster Ports
+### Manual Multi-Server Setup
+
+**Step 1: Generate certs (once, on any server)**
+```bash
+cd cluster
+../scripts/generate-certs.sh ./certs cluster.local 365
+```
+
+**Step 2: On EACH server**
+```bash
+git clone https://github.com/siinghd/valkey-ssl.git
+cd valkey-ssl/cluster
+
+# Copy certs from step 1
+scp -r user@cert-server:/path/to/cluster/certs ./
+
+# Generate config (use IP or domain)
+./generate-multiserver-config.sh 1 10.0.0.1 mysecretpass
+# Or: ./generate-multiserver-config.sh 1 redis1.example.com mysecretpass
+
+# Open firewall
+sudo ufw allow 6379/tcp
+sudo ufw allow 16379/tcp
+
+# Start node
+NODE_ID=1 docker compose -f docker-compose.multi-server.yml up -d
+```
+
+**Step 3: Initialize cluster**
+```bash
+./init-multiserver-cluster.sh mysecretpass \
+  10.0.0.1:6379 10.0.0.2:6379 10.0.0.3:6379 \
+  10.0.0.4:6379 10.0.0.5:6379 10.0.0.6:6379
+```
+
+---
+
+## Single-Server Cluster (Testing)
+
+For testing cluster mode on a single server (6 nodes on ports 6380-6385):
+
+```bash
+./setup.sh --cluster
+```
+
+Or manually:
+```bash
+cd cluster
+ANNOUNCE_IP=your-server-ip VALKEY_PASSWORD=your-password ./generate-cluster-config.sh
+docker compose up -d
+ANNOUNCE_IP=your-server-ip VALKEY_PASSWORD=your-password ./init-cluster.sh
+```
 
 | Node | Port | Role |
 |------|------|------|
@@ -127,17 +150,47 @@ ANNOUNCE_IP=your-server-ip VALKEY_PASSWORD=your-password ./init-cluster.sh
 | 5 | 6384 | Replica |
 | 6 | 6385 | Replica |
 
-### Cluster Connection
+---
+
+## Manual Standalone Setup
+
+### 1. Generate Certificates
+
+**Self-signed (testing/internal):**
+```bash
+cd scripts
+./generate-certs.sh ../certs your-domain.com 365
+```
+
+**Let's Encrypt (production):**
+```bash
+sudo certbot certonly --webroot -w /var/www/html -d your-domain.com
+sudo cp /etc/letsencrypt/live/your-domain.com/fullchain.pem certs/valkey.crt
+sudo cp /etc/letsencrypt/live/your-domain.com/privkey.pem certs/valkey.key
+chmod 644 certs/valkey.*
+```
+
+### 2. Configure and Start
 
 ```bash
-# CLI (use -c for cluster mode)
-redis-cli --tls --insecure -c -h your-server-ip -p 6380 -a your-password
-
-# Connection URLs (any node works)
-rediss://:your-password@your-server-ip:6380
-rediss://:your-password@your-server-ip:6381
-rediss://:your-password@your-server-ip:6382
+cp config/valkey.conf.example config/valkey.conf
+# Edit config/valkey.conf to set password
+docker compose up -d
 ```
+
+### 3. Test Connection
+
+```bash
+docker exec valkey-ssl valkey-cli --tls --insecure -a your-password PING
+```
+
+## Connection URL
+
+```
+rediss://:your-password@your-domain.com:6379
+```
+
+---
 
 ## Client Examples
 
@@ -158,9 +211,9 @@ const redis = new Redis({
 ```javascript
 const Redis = require('ioredis');
 const cluster = new Redis.Cluster([
-  { host: 'your-server-ip', port: 6380 },
-  { host: 'your-server-ip', port: 6381 },
-  { host: 'your-server-ip', port: 6382 }
+  { host: 'redis1.example.com', port: 6379 },
+  { host: 'redis2.example.com', port: 6379 },
+  { host: 'redis3.example.com', port: 6379 }
 ], {
   redisOptions: {
     password: 'your-password',
@@ -186,12 +239,14 @@ r = redis.Redis(
 ```python
 from redis.cluster import RedisCluster
 rc = RedisCluster(
-    host='your-server-ip',
-    port=6380,
+    host='redis1.example.com',
+    port=6379,
     password='your-password',
     ssl=True
 )
 ```
+
+---
 
 ## Configuration
 
@@ -210,28 +265,17 @@ Dangerous commands are disabled by default:
 - `FLUSHDB`, `FLUSHALL`, `DEBUG` - disabled
 - `CONFIG` - renamed to `CONFIG_a8f3b2c1`
 
-## Let's Encrypt Auto-Renewal
+---
 
-To automatically update Valkey certs when Let's Encrypt renews:
-
-```bash
-# Edit the renewal script with your values
-nano scripts/renew-certs.sh
-
-# Link to certbot hooks
-sudo ln -sf $(pwd)/scripts/renew-certs.sh /etc/letsencrypt/renewal-hooks/deploy/valkey-ssl.sh
-```
-
-## Scalability & Production
+## Production Features
 
 ### Host Optimization
 
-Run on each server for optimal performance:
 ```bash
 sudo ./scripts/optimize-host.sh
 ```
 
-This configures:
+Configures:
 - Disables Transparent Huge Pages (reduces latency spikes)
 - Sets `vm.overcommit_memory=1` (prevents background save failures)
 - Increases TCP backlog and file descriptors
@@ -240,7 +284,7 @@ This configures:
 ### Automated Backups
 
 ```bash
-# Manual backup
+# Manual
 VALKEY_PASSWORD=your-password ./scripts/backup.sh /backups
 
 # Cron (every 6 hours)
@@ -249,50 +293,17 @@ VALKEY_PASSWORD=your-password ./scripts/backup.sh /backups
 
 ### Monitoring
 
-Start Prometheus exporter:
 ```bash
 cd monitoring
 VALKEY_PASSWORD=your-password docker compose up -d
 ```
 
-Metrics available at `http://localhost:9121/metrics`
+Metrics at `http://localhost:9121/metrics`
 
-### Multi-Server Cluster
+### Let's Encrypt Auto-Renewal
 
-For true HA, deploy across 6 servers (3 masters + 3 replicas):
-
-**Step 1: Generate certs (once, on any server)**
 ```bash
-cd cluster
-../scripts/generate-certs.sh ./certs cluster.local 365
-```
-
-**Step 2: On EACH server**
-```bash
-# Copy the repo
-git clone https://github.com/hsingh/valkey-ssl.git
-cd valkey-ssl/cluster
-
-# Copy certs from step 1
-scp -r user@cert-server:/path/to/cluster/certs ./
-
-# Generate config for this node
-./generate-multiserver-config.sh <NODE_ID> <THIS_SERVER_IP> <PASSWORD>
-# Example: ./generate-multiserver-config.sh 1 10.0.0.1 mysecretpass
-
-# Open firewall (port + cluster bus port)
-sudo ufw allow 6379/tcp
-sudo ufw allow 16379/tcp
-
-# Start node
-NODE_ID=1 docker compose -f docker-compose.multi-server.yml up -d
-```
-
-**Step 3: Initialize cluster (from any server, after ALL nodes running)**
-```bash
-./init-multiserver-cluster.sh <PASSWORD> \
-  10.0.0.1:6379 10.0.0.2:6379 10.0.0.3:6379 \
-  10.0.0.4:6379 10.0.0.5:6379 10.0.0.6:6379
+sudo ln -sf $(pwd)/scripts/renew-certs.sh /etc/letsencrypt/renewal-hooks/deploy/valkey-ssl.sh
 ```
 
 ### Sentinel (Alternative to Cluster)
@@ -304,17 +315,19 @@ cd sentinel
 docker compose up -d
 ```
 
+---
+
 ## File Structure
 
 ```
 valkey-ssl/
-├── setup.sh                        # One-command setup
+├── setup.sh                        # One-command setup (interactive)
 ├── teardown.sh                     # Cleanup script
 ├── docker-compose.yml              # Standalone deployment
 ├── .env.example                    # Environment template
 ├── config/
 │   └── valkey.conf.example         # Config template (optimized)
-├── certs/                          # SSL certificates
+├── certs/                          # SSL certificates (generated)
 ├── data/                           # Persistent data
 ├── scripts/
 │   ├── generate-certs.sh           # Self-signed cert generator
@@ -323,10 +336,10 @@ valkey-ssl/
 │   ├── optimize-host.sh            # OS/kernel tuning
 │   └── test-connection.sh          # Connection tester
 ├── cluster/
-│   ├── docker-compose.yml              # Single-server cluster (testing)
-│   ├── docker-compose.multi-server.yml # Multi-server cluster (production)
-│   ├── generate-cluster-config.sh      # Single-server config generator
-│   ├── generate-multiserver-config.sh  # Multi-server config generator
+│   ├── docker-compose.yml              # Single-server cluster
+│   ├── docker-compose.multi-server.yml # Multi-server cluster
+│   ├── generate-cluster-config.sh      # Single-server config
+│   ├── generate-multiserver-config.sh  # Multi-server config
 │   ├── init-cluster.sh                 # Single-server init
 │   ├── init-multiserver-cluster.sh     # Multi-server init
 │   └── valkey-cluster.conf.template
