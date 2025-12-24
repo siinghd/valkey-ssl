@@ -1,10 +1,15 @@
 # Certificates and keys (generate your own)
 certs/
 cluster/certs/
+sentinel/certs/
 
 # Data directories
 data/
 cluster/data/
+sentinel/data/
+
+# Generated configs with secrets
+sentinel/config/
 
 # Environment files with secrets
 .env

@@ -306,13 +306,79 @@ Metrics at `http://localhost:9121/metrics`
 sudo ln -sf $(pwd)/scripts/renew-certs.sh /etc/letsencrypt/renewal-hooks/deploy/valkey-ssl.sh
 ```
 
-### Sentinel (Alternative to Cluster)
+---
 
-For automatic failover without sharding:
+## Sentinel HA (Alternative to Cluster)
+
+For automatic failover without data sharding. Use when:
+- Data fits on one server
+- Need HA with automatic failover
+- Don't need horizontal scaling
+
+**Architecture:** 1 Master + 2 Replicas + 3 Sentinels across 3 servers
+
+### Setup (3 servers)
+
+**Generate certs (once):**
 ```bash
 cd sentinel
-# Configure sentinel.conf with your master IP
+../scripts/generate-certs.sh ./certs sentinel.local 365
+```
+
+**Server 1 (Master):**
+```bash
+./generate-sentinel-config.sh master 10.0.0.1 10.0.0.1 mysecret
+# Or with domain:
+./generate-sentinel-config.sh master redis1.example.com redis1.example.com mysecret
+sudo ufw allow 6379/tcp && sudo ufw allow 26379/tcp
 docker compose up -d
+```
+
+**Server 2 (Replica):**
+```bash
+# Copy certs from server 1
+scp -r user@server1:/path/to/sentinel/certs ./
+./generate-sentinel-config.sh replica 10.0.0.2 10.0.0.1 mysecret
+sudo ufw allow 6379/tcp && sudo ufw allow 26379/tcp
+docker compose up -d
+```
+
+**Server 3 (Replica):**
+```bash
+# Copy certs from server 1
+scp -r user@server1:/path/to/sentinel/certs ./
+./generate-sentinel-config.sh replica 10.0.0.3 10.0.0.1 mysecret
+sudo ufw allow 6379/tcp && sudo ufw allow 26379/tcp
+docker compose up -d
+```
+
+### Verify
+
+```bash
+# Check sentinel status
+docker exec valkey-sentinel valkey-cli --tls --insecure -p 26379 SENTINEL masters
+
+# Check replication
+docker exec valkey valkey-cli --tls --insecure -a mysecret INFO replication
+```
+
+### Client Connection
+
+Clients should connect to Sentinel to discover the current master:
+
+**Node.js:**
+```javascript
+const Redis = require('ioredis');
+const redis = new Redis({
+  sentinels: [
+    { host: '10.0.0.1', port: 26379 },
+    { host: '10.0.0.2', port: 26379 },
+    { host: '10.0.0.3', port: 26379 }
+  ],
+  name: 'mymaster',
+  password: 'mysecret',
+  tls: {}
+});
 ```
 
 ---
@@ -341,11 +407,10 @@ valkey-ssl/
 │   ├── generate-cluster-config.sh      # Single-server config
 │   ├── generate-multiserver-config.sh  # Multi-server config
 │   ├── init-cluster.sh                 # Single-server init
-│   ├── init-multiserver-cluster.sh     # Multi-server init
-│   └── valkey-cluster.conf.template
+│   └── init-multiserver-cluster.sh     # Multi-server init
 ├── sentinel/
-│   ├── docker-compose.yml          # Sentinel HA
-│   └── sentinel.conf.template
+│   ├── docker-compose.yml              # Sentinel deployment
+│   └── generate-sentinel-config.sh     # Config generator
 └── monitoring/
     ├── docker-compose.yml          # Prometheus exporter
     └── prometheus.yml              # Prometheus config

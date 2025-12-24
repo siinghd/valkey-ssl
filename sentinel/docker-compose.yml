@@ -1,11 +1,14 @@
-# Valkey Sentinel - Automatic Failover for Standalone Mode
+# Valkey Sentinel - Automatic Failover for HA
 #
-# Architecture: 1 Master + 2 Replicas + 3 Sentinels
-# Deploy across 3 servers for true HA
+# Architecture: 1 Master + 2 Replicas + 3 Sentinels (on 3 servers)
 #
-# Server 1: Master (6379) + Sentinel (26379)
-# Server 2: Replica (6379) + Sentinel (26379)
-# Server 3: Replica (6379) + Sentinel (26379)
+# Setup:
+#   1. Generate certs: ../scripts/generate-certs.sh ./certs sentinel.local 365
+#   2. Generate config: ./generate-sentinel-config.sh <role> <this-ip> <master-ip> <password>
+#   3. Start: docker compose up -d
+#
+# Verify:
+#   docker exec valkey-sentinel valkey-cli --tls --insecure -p 26379 SENTINEL masters
 
 services:
   valkey:
@@ -22,6 +25,17 @@ services:
       nofile:
         soft: 65536
         hard: 65536
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
 
   sentinel:
     image: valkey/valkey:8-alpine
@@ -34,3 +48,8 @@ services:
       - ./certs:/certs:ro
     depends_on:
       - valkey
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
