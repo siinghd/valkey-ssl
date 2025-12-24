@@ -130,6 +130,7 @@ tls-ca-cert-file /certs/ca.crt
 tls-replication yes
 tls-protocols "TLSv1.2 TLSv1.3"
 tls-prefer-server-ciphers yes
+tls-auth-clients optional
 
 # =============================================================================
 # SENTINEL MONITORING

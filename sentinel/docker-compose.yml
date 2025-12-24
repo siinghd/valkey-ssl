@@ -44,7 +44,7 @@ services:
     command: valkey-sentinel /etc/valkey/sentinel.conf
     network_mode: host
     volumes:
-      - ./config/sentinel.conf:/etc/valkey/sentinel.conf
+      - ./config:/etc/valkey
       - ./certs:/certs:ro
     depends_on:
       - valkey
