@@ -105,8 +105,32 @@ if [ -z "$MODE" ]; then
 fi
 
 echo ""
+
+# Ask for server address if standalone and not provided
+if [ "$MODE" == "standalone" ] && [ "$DOMAIN" == "localhost" ]; then
+    echo "How will clients connect to this server?"
+    echo ""
+    echo "  1) Domain name (e.g., redis.example.com) - for Let's Encrypt or custom certs"
+    echo "  2) IP address only ($SERVER_IP) - self-signed certs"
+    echo ""
+    read -p "Enter choice [1-2]: " addr_choice
+
+    case $addr_choice in
+        1)
+            read -p "Enter domain name: " user_domain
+            if [ -n "$user_domain" ]; then
+                DOMAIN="$user_domain"
+            fi
+            ;;
+        2)
+            DOMAIN="$SERVER_IP"
+            ;;
+    esac
+    echo ""
+fi
+
 echo -e "${YELLOW}Mode: $MODE${NC}"
-echo -e "${YELLOW}Server IP: $SERVER_IP${NC}"
+echo -e "${YELLOW}Server: ${DOMAIN:-$SERVER_IP}${NC}"
 echo ""
 
 # ============================================================================
