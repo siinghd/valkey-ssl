@@ -26,7 +26,7 @@ MODE=""
 PASSWORD=""
 DOMAIN="localhost"
 NODE_ID=""
-SERVER_IP=""
+NODE_ADDRESS=""  # IP or domain for this node
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -38,7 +38,7 @@ while [[ $# -gt 0 ]]; do
         --password) PASSWORD="$2"; shift 2 ;;
         --domain) DOMAIN="$2"; shift 2 ;;
         --node-id) NODE_ID="$2"; shift 2 ;;
-        --ip) SERVER_IP="$2"; shift 2 ;;
+        --ip|--address) NODE_ADDRESS="$2"; shift 2 ;;
         --help)
             echo "Usage: ./setup.sh [OPTIONS]"
             echo ""
@@ -50,15 +50,17 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --password PASS      Use specific password (default: auto-generated)"
-            echo "  --domain DOMAIN      Domain for certs (default: localhost)"
+            echo "  --domain DOMAIN      Domain/IP for standalone (default: localhost)"
             echo "  --node-id ID         Node ID for multi-server (1-6)"
-            echo "  --ip IP              This server's IP address"
+            echo "  --address ADDR       Node address - IP or domain (e.g., 10.0.0.1 or redis1.example.com)"
             echo ""
             echo "Examples:"
             echo "  ./setup.sh --standalone"
+            echo "  ./setup.sh --standalone --domain redis.example.com"
             echo "  ./setup.sh --cluster --password mysecret"
-            echo "  ./setup.sh --multiserver-init --password mysecret"
-            echo "  ./setup.sh --multiserver-join --node-id 2 --ip 10.0.0.2 --password mysecret"
+            echo "  ./setup.sh --multiserver-init --address 10.0.0.1"
+            echo "  ./setup.sh --multiserver-init --address redis1.example.com"
+            echo "  ./setup.sh --multiserver-join --node-id 2 --address redis2.example.com"
             echo ""
             exit 0
             ;;
@@ -71,9 +73,12 @@ if [ -z "$PASSWORD" ]; then
     PASSWORD=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)
 fi
 
-# Get server IP if not provided
-if [ -z "$SERVER_IP" ]; then
-    SERVER_IP=$(curl -4 -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
+# Get server IP (used for auto-detection fallback)
+AUTO_IP=$(curl -4 -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
+
+# Use NODE_ADDRESS if provided, otherwise fall back to auto-detected IP
+if [ -z "$NODE_ADDRESS" ]; then
+    NODE_ADDRESS="$AUTO_IP"
 fi
 
 echo -e "${GREEN}"
@@ -111,7 +116,7 @@ if [ "$MODE" == "standalone" ] && [ "$DOMAIN" == "localhost" ]; then
     echo "How will clients connect to this server?"
     echo ""
     echo "  1) Domain name (e.g., redis.example.com) - for Let's Encrypt or custom certs"
-    echo "  2) IP address only ($SERVER_IP) - self-signed certs"
+    echo "  2) IP address only ($AUTO_IP) - self-signed certs"
     echo ""
     read -p "Enter choice [1-2]: " addr_choice
 
@@ -123,14 +128,41 @@ if [ "$MODE" == "standalone" ] && [ "$DOMAIN" == "localhost" ]; then
             fi
             ;;
         2)
-            DOMAIN="$SERVER_IP"
+            DOMAIN="$AUTO_IP"
+            ;;
+    esac
+    echo ""
+fi
+
+# Ask for node address if multi-server and not provided via CLI
+if [[ "$MODE" == "multiserver-init" || "$MODE" == "multiserver-join" ]] && [ "$NODE_ADDRESS" == "$AUTO_IP" ]; then
+    echo "How will this node be addressed by other nodes?"
+    echo ""
+    echo "  1) IP address ($AUTO_IP)"
+    echo "  2) Domain name (e.g., redis1.example.com)"
+    echo ""
+    read -p "Enter choice [1-2]: " addr_choice
+
+    case $addr_choice in
+        1)
+            NODE_ADDRESS="$AUTO_IP"
+            ;;
+        2)
+            read -p "Enter domain name for this node: " user_addr
+            if [ -n "$user_addr" ]; then
+                NODE_ADDRESS="$user_addr"
+            fi
             ;;
     esac
     echo ""
 fi
 
 echo -e "${YELLOW}Mode: $MODE${NC}"
-echo -e "${YELLOW}Server: ${DOMAIN:-$SERVER_IP}${NC}"
+if [ "$MODE" == "standalone" ]; then
+    echo -e "${YELLOW}Server: ${DOMAIN}${NC}"
+else
+    echo -e "${YELLOW}Node Address: ${NODE_ADDRESS}${NC}"
+fi
 echo ""
 
 # ============================================================================
@@ -194,7 +226,7 @@ if [ "$MODE" == "cluster" ]; then
     sleep 10
 
     echo "6. Initializing cluster..."
-    ANNOUNCE_IP="$SERVER_IP" VALKEY_PASSWORD="$PASSWORD" ./init-cluster.sh > /dev/null 2>&1
+    ANNOUNCE_IP="$AUTO_IP" VALKEY_PASSWORD="$PASSWORD" ./init-cluster.sh > /dev/null 2>&1
     cd ..
 
     sleep 3
@@ -206,9 +238,9 @@ if [ "$MODE" == "cluster" ]; then
         echo -e "${GREEN}  Cluster Setup Complete! (6 nodes)${NC}"
         echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
         echo ""
-        echo -e "URLs: ${CYAN}rediss://:$PASSWORD@$SERVER_IP:6380${NC}"
-        echo -e "      ${CYAN}rediss://:$PASSWORD@$SERVER_IP:6381${NC}"
-        echo -e "      ${CYAN}rediss://:$PASSWORD@$SERVER_IP:6382${NC}"
+        echo -e "URLs: ${CYAN}rediss://:$PASSWORD@$AUTO_IP:6380${NC}"
+        echo -e "      ${CYAN}rediss://:$PASSWORD@$AUTO_IP:6381${NC}"
+        echo -e "      ${CYAN}rediss://:$PASSWORD@$AUTO_IP:6382${NC}"
         echo ""
         echo "Password: $PASSWORD"
     else
@@ -232,14 +264,14 @@ if [ "$MODE" == "multiserver-init" ]; then
 
     echo "2. Creating cluster bundle for other servers..."
     cd cluster
-    ./generate-multiserver-config.sh 1 "$SERVER_IP" "$PASSWORD" > /dev/null 2>&1
+    ./generate-multiserver-config.sh 1 "$NODE_ADDRESS" "$PASSWORD" > /dev/null 2>&1
 
     # Create bundle for other servers
     BUNDLE_DIR="/tmp/valkey-cluster-bundle"
     rm -rf "$BUNDLE_DIR" && mkdir -p "$BUNDLE_DIR"
     cp -r certs "$BUNDLE_DIR/"
     echo "$PASSWORD" > "$BUNDLE_DIR/password.txt"
-    echo "$SERVER_IP" > "$BUNDLE_DIR/node1-ip.txt"
+    echo "$NODE_ADDRESS" > "$BUNDLE_DIR/node1-address.txt"
 
     BUNDLE_FILE="$SCRIPT_DIR/cluster-bundle.tar.gz"
     tar -czf "$BUNDLE_FILE" -C "$BUNDLE_DIR" .
@@ -267,13 +299,14 @@ if [ "$MODE" == "multiserver-init" ]; then
         echo "  ... (repeat for all 6 servers)"
         echo ""
         echo -e "${CYAN}Step 2: On each other server, run:${NC}"
-        echo "  ./setup.sh --multiserver-join --node-id <2-6> --ip <server-ip>"
+        echo "  ./setup.sh --multiserver-join --node-id <2-6> --address <ip-or-domain>"
         echo ""
         echo -e "${CYAN}Step 3: After ALL 6 nodes are running, run on any server:${NC}"
         echo "  cd cluster && ./init-multiserver-cluster.sh '$PASSWORD' \\"
-        echo "    $SERVER_IP:6379 <server2>:6379 <server3>:6379 \\"
-        echo "    <server4>:6379 <server5>:6379 <server6>:6379"
+        echo "    $NODE_ADDRESS:6379 <node2>:6379 <node3>:6379 \\"
+        echo "    <node4>:6379 <node5>:6379 <node6>:6379"
         echo ""
+        echo -e "Node 1 Address: ${YELLOW}$NODE_ADDRESS${NC}"
         echo -e "Password: ${YELLOW}$PASSWORD${NC}"
         echo -e "Bundle: ${YELLOW}$BUNDLE_FILE${NC}"
     else
@@ -311,12 +344,12 @@ if [ "$MODE" == "multiserver-join" ]; then
     # Read password from bundle
     if [ -f "cluster/password.txt" ]; then
         PASSWORD=$(cat cluster/password.txt)
-        rm cluster/password.txt cluster/node1-ip.txt 2>/dev/null || true
+        rm cluster/password.txt cluster/node1-address.txt 2>/dev/null || true
     fi
 
     echo "2. Generating node configuration..."
     cd cluster
-    ./generate-multiserver-config.sh "$NODE_ID" "$SERVER_IP" "$PASSWORD" > /dev/null 2>&1
+    ./generate-multiserver-config.sh "$NODE_ID" "$NODE_ADDRESS" "$PASSWORD" > /dev/null 2>&1
 
     echo "3. Opening firewall ports..."
     sudo ufw allow 6379/tcp > /dev/null 2>&1 || true
@@ -334,10 +367,10 @@ if [ "$MODE" == "multiserver-join" ]; then
         echo -e "${GREEN}  Node $NODE_ID Ready!${NC}"
         echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
         echo ""
-        echo "This node: $SERVER_IP:6379"
+        echo "This node: $NODE_ADDRESS:6379"
         echo ""
         echo "After ALL nodes are running, initialize cluster from any server:"
-        echo "  cd cluster && ./init-multiserver-cluster.sh '$PASSWORD' <all-node-ips:6379>"
+        echo "  cd cluster && ./init-multiserver-cluster.sh '$PASSWORD' <all-node-addresses:6379>"
     else
         echo -e "${RED}Node $NODE_ID failed. Check: docker logs valkey-node-$NODE_ID${NC}"
         exit 1
