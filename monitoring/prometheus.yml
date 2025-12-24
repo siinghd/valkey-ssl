@@ -1,0 +1,23 @@
+# Prometheus configuration for Valkey monitoring
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Standalone Valkey
+  - job_name: 'valkey-standalone'
+    static_configs:
+      - targets: ['localhost:9121']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'valkey-standalone'
+
+  # Cluster nodes (add all node exporters)
+  # - job_name: 'valkey-cluster'
+  #   static_configs:
+  #     - targets:
+  #       - 'server1:9121'
+  #       - 'server2:9121'
+  #       - 'server3:9121'

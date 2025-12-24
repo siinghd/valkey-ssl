@@ -1,0 +1,36 @@
+# Valkey Sentinel - Automatic Failover for Standalone Mode
+#
+# Architecture: 1 Master + 2 Replicas + 3 Sentinels
+# Deploy across 3 servers for true HA
+#
+# Server 1: Master (6379) + Sentinel (26379)
+# Server 2: Replica (6379) + Sentinel (26379)
+# Server 3: Replica (6379) + Sentinel (26379)
+
+services:
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: valkey
+    restart: unless-stopped
+    command: valkey-server /etc/valkey/valkey.conf
+    network_mode: host
+    volumes:
+      - ./config/valkey.conf:/etc/valkey/valkey.conf:ro
+      - ./certs:/certs:ro
+      - ./data:/data
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  sentinel:
+    image: valkey/valkey:8-alpine
+    container_name: valkey-sentinel
+    restart: unless-stopped
+    command: valkey-sentinel /etc/valkey/sentinel.conf
+    network_mode: host
+    volumes:
+      - ./config/sentinel.conf:/etc/valkey/sentinel.conf
+      - ./certs:/certs:ro
+    depends_on:
+      - valkey

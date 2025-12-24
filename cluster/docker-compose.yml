@@ -1,0 +1,97 @@
+# Valkey Cluster with SSL - 6 nodes (3 masters + 3 replicas)
+# Uses host networking for proper cluster communication
+# Usage:
+#   1. Generate configs: ./generate-cluster-config.sh
+#   2. Start cluster: docker compose up -d
+#   3. Initialize: ./init-cluster.sh
+
+services:
+  valkey-node-1:
+    image: valkey/valkey:8-alpine
+    container_name: valkey-node-1
+    restart: unless-stopped
+    command: valkey-server /etc/valkey/valkey.conf
+    network_mode: host
+    volumes:
+      - ./config/node-1.conf:/etc/valkey/valkey.conf:ro
+      - ./certs:/certs:ro
+      - ./data/node-1:/data
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  valkey-node-2:
+    image: valkey/valkey:8-alpine
+    container_name: valkey-node-2
+    restart: unless-stopped
+    command: valkey-server /etc/valkey/valkey.conf
+    network_mode: host
+    volumes:
+      - ./config/node-2.conf:/etc/valkey/valkey.conf:ro
+      - ./certs:/certs:ro
+      - ./data/node-2:/data
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  valkey-node-3:
+    image: valkey/valkey:8-alpine
+    container_name: valkey-node-3
+    restart: unless-stopped
+    command: valkey-server /etc/valkey/valkey.conf
+    network_mode: host
+    volumes:
+      - ./config/node-3.conf:/etc/valkey/valkey.conf:ro
+      - ./certs:/certs:ro
+      - ./data/node-3:/data
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  valkey-node-4:
+    image: valkey/valkey:8-alpine
+    container_name: valkey-node-4
+    restart: unless-stopped
+    command: valkey-server /etc/valkey/valkey.conf
+    network_mode: host
+    volumes:
+      - ./config/node-4.conf:/etc/valkey/valkey.conf:ro
+      - ./certs:/certs:ro
+      - ./data/node-4:/data
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  valkey-node-5:
+    image: valkey/valkey:8-alpine
+    container_name: valkey-node-5
+    restart: unless-stopped
+    command: valkey-server /etc/valkey/valkey.conf
+    network_mode: host
+    volumes:
+      - ./config/node-5.conf:/etc/valkey/valkey.conf:ro
+      - ./certs:/certs:ro
+      - ./data/node-5:/data
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  valkey-node-6:
+    image: valkey/valkey:8-alpine
+    container_name: valkey-node-6
+    restart: unless-stopped
+    command: valkey-server /etc/valkey/valkey.conf
+    network_mode: host
+    volumes:
+      - ./config/node-6.conf:/etc/valkey/valkey.conf:ro
+      - ./certs:/certs:ro
+      - ./data/node-6:/data
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536

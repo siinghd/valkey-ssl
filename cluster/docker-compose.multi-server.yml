@@ -1,0 +1,40 @@
+# Valkey Cluster - Multi-Server Deployment
+# Deploy this on EACH server
+#
+# Prerequisites on each server:
+#   1. Generate config: ./generate-multiserver-config.sh <NODE_ID> <THIS_SERVER_IP> <PASSWORD>
+#   2. Copy certs: scp -r user@server:/path/to/cluster/certs ./
+#   3. Open firewall: sudo ufw allow 6379/tcp && sudo ufw allow 16379/tcp
+#
+# Start node:
+#   NODE_ID=1 docker compose -f docker-compose.multi-server.yml up -d
+#
+# After ALL nodes running, initialize from any server:
+#   ./init-multiserver-cluster.sh <password> server1:6379 server2:6379 server3:6379 ...
+
+services:
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: valkey-node-${NODE_ID:-1}
+    restart: unless-stopped
+    command: valkey-server /etc/valkey/valkey.conf
+    network_mode: host
+    volumes:
+      - ./config/node-${NODE_ID:-1}.conf:/etc/valkey/valkey.conf:ro
+      - ./certs:/certs:ro
+      - ./data:/data
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"

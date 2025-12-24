@@ -1,0 +1,31 @@
+# Certificates and keys (generate your own)
+certs/
+cluster/certs/
+
+# Data directories
+data/
+cluster/data/
+
+# Environment files with secrets
+.env
+!.env.example
+
+# Config with secrets (use .example as template)
+config/valkey.conf
+!config/valkey.conf.example
+
+# Cluster node configs (generated)
+cluster/config/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

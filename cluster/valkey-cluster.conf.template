@@ -1,0 +1,107 @@
+# Valkey Cluster Node Configuration Template
+# Production-optimized with TLS/SSL
+
+# =============================================================================
+# NETWORK
+# =============================================================================
+bind 0.0.0.0
+port 0
+tls-port {{NODE_PORT}}
+protected-mode yes
+
+# =============================================================================
+# CLUSTER
+# =============================================================================
+cluster-enabled yes
+cluster-config-file nodes-{{NODE_ID}}.conf
+cluster-node-timeout 5000
+cluster-announce-ip {{ANNOUNCE_IP}}
+cluster-announce-port {{NODE_PORT}}
+cluster-announce-tls-port {{NODE_PORT}}
+cluster-require-full-coverage yes
+cluster-replica-validity-factor 10
+
+# =============================================================================
+# TLS/SSL (self-signed for cluster internal communication)
+# =============================================================================
+tls-cert-file /certs/valkey.crt
+tls-key-file /certs/valkey.key
+tls-ca-cert-file /certs/ca.crt
+tls-cluster yes
+tls-replication yes
+
+# Protocols and ciphers
+tls-protocols "TLSv1.2 TLSv1.3"
+tls-ciphersuites TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
+tls-prefer-server-ciphers yes
+tls-auth-clients optional
+
+# TLS session caching
+tls-session-caching yes
+tls-session-cache-size 20480
+tls-session-cache-timeout 300
+
+# =============================================================================
+# AUTHENTICATION
+# =============================================================================
+requirepass {{VALKEY_PASSWORD}}
+masterauth {{VALKEY_PASSWORD}}
+
+# =============================================================================
+# MEMORY
+# =============================================================================
+maxmemory 1gb
+maxmemory-policy allkeys-lru
+
+# Lazy freeing
+lazyfree-lazy-eviction yes
+lazyfree-lazy-expire yes
+lazyfree-lazy-server-del yes
+lazyfree-lazy-user-del yes
+replica-lazy-flush yes
+
+# Active defragmentation
+activedefrag yes
+active-defrag-ignore-bytes 100mb
+active-defrag-threshold-lower 10
+active-defrag-threshold-upper 100
+
+# =============================================================================
+# PERSISTENCE
+# =============================================================================
+save 900 1
+save 300 10
+save 60 10000
+dbfilename dump-{{NODE_ID}}.rdb
+dir /data
+rdbcompression yes
+rdbchecksum yes
+
+appendonly yes
+appendfilename "appendonly-{{NODE_ID}}.aof"
+appendfsync everysec
+aof-use-rdb-preamble yes
+
+# =============================================================================
+# PERFORMANCE
+# =============================================================================
+tcp-backlog 4096
+tcp-keepalive 300
+timeout 0
+
+# =============================================================================
+# LOGGING & MONITORING
+# =============================================================================
+loglevel notice
+logfile ""
+slowlog-log-slower-than 10000
+slowlog-max-len 128
+latency-monitor-threshold 100
+
+# =============================================================================
+# CLIENT LIMITS
+# =============================================================================
+maxclients 10000
+client-output-buffer-limit normal 0 0 0
+client-output-buffer-limit replica 256mb 64mb 60
+client-output-buffer-limit pubsub 32mb 8mb 60

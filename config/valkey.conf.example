@@ -1,0 +1,118 @@
+# Valkey SSL Configuration
+# Production-optimized with TLS/SSL encryption
+
+# =============================================================================
+# NETWORK
+# =============================================================================
+bind 0.0.0.0
+port 0
+tls-port 6379
+protected-mode yes
+
+# =============================================================================
+# TLS/SSL
+# =============================================================================
+tls-cert-file /certs/valkey.crt
+tls-key-file /certs/valkey.key
+# tls-ca-cert-file /certs/ca.crt  # Enable for mTLS
+
+# Protocols and ciphers
+tls-protocols "TLSv1.2 TLSv1.3"
+tls-ciphersuites TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
+tls-prefer-server-ciphers yes
+tls-auth-clients no
+
+# TLS session caching (reduces handshake overhead)
+tls-session-caching yes
+tls-session-cache-size 20480
+tls-session-cache-timeout 300
+
+# =============================================================================
+# AUTHENTICATION - CHANGE THIS!
+# =============================================================================
+requirepass your-secure-password-here
+
+# =============================================================================
+# MEMORY
+# =============================================================================
+maxmemory 2gb
+maxmemory-policy allkeys-lru
+
+# Lazy freeing (non-blocking deletes - better latency)
+lazyfree-lazy-eviction yes
+lazyfree-lazy-expire yes
+lazyfree-lazy-server-del yes
+lazyfree-lazy-user-del yes
+lazyfree-lazy-user-flush yes
+
+# Active defragmentation (reduces memory fragmentation)
+activedefrag yes
+active-defrag-ignore-bytes 100mb
+active-defrag-threshold-lower 10
+active-defrag-threshold-upper 100
+active-defrag-cycle-min 1
+active-defrag-cycle-max 25
+
+# =============================================================================
+# PERSISTENCE
+# =============================================================================
+# RDB snapshots
+save 900 1
+save 300 10
+save 60 10000
+dbfilename dump.rdb
+dir /data
+rdbcompression yes
+rdbchecksum yes
+
+# AOF (Append Only File)
+appendonly yes
+appendfilename "appendonly.aof"
+appendfsync everysec
+no-appendfsync-on-rewrite no
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+aof-use-rdb-preamble yes
+
+# =============================================================================
+# PERFORMANCE
+# =============================================================================
+# TCP tuning
+tcp-backlog 4096
+tcp-keepalive 300
+timeout 0
+
+# IO threads (multi-core optimization)
+# Uncomment for high-throughput workloads on multi-core systems
+# io-threads 4
+# io-threads-do-reads yes
+
+# =============================================================================
+# LOGGING & MONITORING
+# =============================================================================
+loglevel notice
+logfile ""
+
+# Slow log (queries taking longer than 10ms)
+slowlog-log-slower-than 10000
+slowlog-max-len 128
+
+# Latency monitoring
+latency-monitor-threshold 100
+
+# =============================================================================
+# SECURITY
+# =============================================================================
+# Disable dangerous commands
+rename-command FLUSHDB ""
+rename-command FLUSHALL ""
+rename-command DEBUG ""
+rename-command CONFIG "CONFIG_a8f3b2c1"
+
+# =============================================================================
+# CLIENT LIMITS
+# =============================================================================
+maxclients 10000
+client-output-buffer-limit normal 0 0 0
+client-output-buffer-limit replica 256mb 64mb 60
+client-output-buffer-limit pubsub 32mb 8mb 60

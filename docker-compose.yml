@@ -1,0 +1,32 @@
+services:
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: valkey-ssl
+    restart: unless-stopped
+    command: valkey-server /etc/valkey/valkey.conf
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./config/valkey.conf:/etc/valkey/valkey.conf:ro
+      - ./certs:/certs:ro
+      - ./data:/data
+    environment:
+      - VALKEY_PASSWORD=${VALKEY_PASSWORD:-your-password}
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli --tls --insecure -a $$VALKEY_PASSWORD ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    sysctls:
+      net.core.somaxconn: 1024
+    networks:
+      - valkey-net
+
+networks:
+  valkey-net:
+    driver: bridge
